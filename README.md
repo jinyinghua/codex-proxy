@@ -3,7 +3,7 @@
 一个部署到 Vercel 的极简转发器，给 NewAPI 的 Codex/Responses 渠道用。
 
 作用：
-- 接收 `/v1/responses`
+- 接收 `/backend-api/codex/responses`
 - 当 `model` 形如 `gpt-draw-1024x1024` 时：
   - 自动改写为真实模型 `DRAW_REAL_MODEL`
   - 自动注入 `tools: [{"type":"image_generation"}]`
@@ -13,8 +13,7 @@
 
 ## 路由
 
-- `POST /v1/responses`
-- `GET /v1/models`
+- `POST /backend-api/codex/responses`
 
 在 NewAPI 里把 base_url 填成：
 
@@ -22,7 +21,7 @@
 https://你的项目.vercel.app
 ```
 
-这样它访问 `/v1/responses` 时就会命中这个函数。
+这样它访问 `/backend-api/codex/responses` 时就会命中这个函数。
 
 ## 环境变量
 
@@ -104,7 +103,7 @@ Authorization: Bearer ...
 ### 非流式
 
 ```bash
-curl http://localhost:3000/v1/responses \
+curl http://localhost:3000/backend-api/codex/responses \
   -H 'Content-Type: application/json' \
   -H 'Authorization: Bearer test-key' \
   -d '{
@@ -116,7 +115,7 @@ curl http://localhost:3000/v1/responses \
 ### 流式
 
 ```bash
-curl http://localhost:3000/v1/responses \
+curl http://localhost:3000/backend-api/codex/responses \
   -N \
   -H 'Content-Type: application/json' \
   -H 'Authorization: Bearer test-key' \
