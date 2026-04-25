@@ -13,13 +13,13 @@
 
 ## 路由
 
-- `POST /api/v1/responses`
-- `GET /api/v1/models`
+- `POST /v1/responses`
+- `GET /v1/models`
 
 在 NewAPI 里把 base_url 填成：
 
 ```text
-https://你的项目.vercel.app/api
+https://你的项目.vercel.app
 ```
 
 这样它访问 `/v1/responses` 时就会命中这个函数。
@@ -104,7 +104,7 @@ Authorization: Bearer ...
 ### 非流式
 
 ```bash
-curl http://localhost:3000/api/v1/responses \
+curl http://localhost:3000/v1/responses \
   -H 'Content-Type: application/json' \
   -H 'Authorization: Bearer test-key' \
   -d '{
@@ -116,7 +116,7 @@ curl http://localhost:3000/api/v1/responses \
 ### 流式
 
 ```bash
-curl http://localhost:3000/api/v1/responses \
+curl http://localhost:3000/v1/responses \
   -N \
   -H 'Content-Type: application/json' \
   -H 'Authorization: Bearer test-key' \
