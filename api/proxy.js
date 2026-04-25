@@ -71,17 +71,33 @@ function getOriginalPathAndQuery(req) {
 
   const qs = new URLSearchParams(url.searchParams);
   qs.delete('__path');
+  qs.delete('proxyPath');
   const query = qs.toString();
 
   return {
-    path,
+    path: path.startsWith('/') ? path : `/${path}`,
     query: query ? `?${query}` : '',
   };
 }
 
+function getUpstreamOrigin() {
+  const raw = (process.env.UPSTREAM_ORIGIN || '').trim();
+  if (!raw) return '';
+
+  try {
+    return new URL(raw).origin;
+  } catch {
+    return raw.replace(/\/+$/, '');
+  }
+}
+
+function buildUpstreamUrl(upstreamOrigin, path, query) {
+  return new URL(`${path}${query}`, `${upstreamOrigin}/`).toString();
+}
+
 export default async function handler(req, res) {
   try {
-    const upstreamOrigin = (process.env.UPSTREAM_ORIGIN || '').replace(/\/+$/, '');
+    const upstreamOrigin = getUpstreamOrigin();
     if (!upstreamOrigin) {
       return sendJson(res, 500, { error: { message: 'Missing UPSTREAM_ORIGIN' } });
     }
@@ -92,7 +108,7 @@ export default async function handler(req, res) {
     }
 
     const { path, query } = getOriginalPathAndQuery(req);
-    const upstreamUrl = `${upstreamOrigin}${path}${query}`;
+    const upstreamUrl = buildUpstreamUrl(upstreamOrigin, path, query);
 
     const rawBody = ['GET', 'HEAD'].includes(req.method) ? '' : await readRawBody(req);
     const jsonBody = tryParseJson(rawBody);
@@ -134,11 +150,13 @@ export default async function handler(req, res) {
       console.log('forward tools:', JSON.stringify(out?.tools || null));
       console.log('forward tool_choice:', JSON.stringify(out?.tool_choice || null));
       console.log('stream:', Boolean(out?.stream));
+      console.log('upstream origin:', upstreamOrigin);
       console.log('upstream url:', upstreamUrl);
     } else {
       console.log('incoming path:', path);
       console.log('method:', req.method);
       console.log('non-json body');
+      console.log('upstream origin:', upstreamOrigin);
       console.log('upstream url:', upstreamUrl);
     }
 

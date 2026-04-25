@@ -6,8 +6,8 @@
       "destination": "/api/proxy?__path=/"
     },
     {
-      "source": "/:path*",
-      "destination": "/api/proxy?__path=/:path*"
+      "source": "/:proxyPath*",
+      "destination": "/api/proxy?__path=/:proxyPath*"
     }
   ]
 }
