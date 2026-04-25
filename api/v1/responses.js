@@ -48,6 +48,43 @@ async function readJsonBody(req) {
   });
 }
 
+function copyHeaders(upstreamResp, res) {
+  const passthroughHeaders = [
+    'content-type',
+    'cache-control',
+    'x-request-id',
+    'openai-processing-ms',
+    'openai-version',
+    'transfer-encoding',
+    'connection',
+  ];
+
+  for (const name of passthroughHeaders) {
+    const value = upstreamResp.headers.get(name);
+    if (value) {
+      res.setHeader(name, value);
+    }
+  }
+}
+
+async function pipeWebStreamToNodeResponse(stream, res) {
+  const reader = stream.getReader();
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value) {
+        res.write(Buffer.from(value));
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  res.end();
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return sendJson(res, 405, { error: { message: 'Method not allowed' } });
@@ -101,6 +138,7 @@ export default async function handler(req, res) {
     console.log('forward model:', out?.model);
     console.log('forward tools:', JSON.stringify(out?.tools || null));
     console.log('forward tool_choice:', JSON.stringify(out?.tool_choice || null));
+    console.log('stream:', Boolean(out?.stream));
 
     const upstreamResp = await fetch(`${upstreamBase}/v1/responses`, {
       method: 'POST',
@@ -111,13 +149,17 @@ export default async function handler(req, res) {
       body: JSON.stringify(out),
     });
 
-    const text = await upstreamResp.text();
-
     res.status(upstreamResp.status);
-    res.setHeader(
-      'Content-Type',
-      upstreamResp.headers.get('content-type') || 'application/json; charset=utf-8'
-    );
+    copyHeaders(upstreamResp, res);
+
+    if (upstreamResp.body) {
+      return await pipeWebStreamToNodeResponse(upstreamResp.body, res);
+    }
+
+    const text = await upstreamResp.text();
+    if (!res.getHeader('Content-Type')) {
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    }
     res.end(text);
   } catch (err) {
     return sendJson(res, 500, {

@@ -9,6 +9,7 @@
   - 自动注入 `tools: [{"type":"image_generation"}]`
 - 原样透传 `Authorization` 到上游
 - 再把请求转发到 `UPSTREAM_BASE_URL/v1/responses`
+- 支持非流式和流式响应透传
 
 ## 路由
 
@@ -67,6 +68,22 @@ PUT_SIZE_IN_BODY=false
 gpt-draw-宽x高
 ```
 
+## 流式转发
+
+当请求体里带：
+
+```json
+{
+  "stream": true
+}
+```
+
+本项目会把上游 `/v1/responses` 的响应体按流直接透传给客户端，适合 SSE / chunked responses 场景。
+
+注意：
+- 是否真正流式，取决于上游是否支持
+- Vercel 平台本身也可能对长连接有时间限制
+
 ## 说明
 
 这个代理不保存上游 key。
@@ -84,6 +101,8 @@ Authorization: Bearer ...
 
 ## 本地测试
 
+### 非流式
+
 ```bash
 curl http://localhost:3000/api/v1/responses \
   -H 'Content-Type: application/json' \
@@ -91,5 +110,19 @@ curl http://localhost:3000/api/v1/responses \
   -d '{
     "model": "gpt-draw-1024x1024",
     "input": "画一只白色小猫，动漫风"
+  }'
+```
+
+### 流式
+
+```bash
+curl http://localhost:3000/api/v1/responses \
+  -N \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer test-key' \
+  -d '{
+    "model": "gpt-draw-1024x1024",
+    "input": "画一只白色小猫，动漫风",
+    "stream": true
   }'
 ```
