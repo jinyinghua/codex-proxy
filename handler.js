@@ -64,6 +64,21 @@ async function pipeWebStreamToNodeResponse(stream, res) {
   res.end();
 }
 
+function getOriginalPathAndQuery(req) {
+  const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+  const rewrittenPath = url.searchParams.get('__path');
+  const path = rewrittenPath || url.pathname || '/';
+
+  const qs = new URLSearchParams(url.searchParams);
+  qs.delete('__path');
+  const query = qs.toString();
+
+  return {
+    path,
+    query: query ? `?${query}` : '',
+  };
+}
+
 export default async function handler(req, res) {
   try {
     const upstreamOrigin = (process.env.UPSTREAM_ORIGIN || '').replace(/\/+$/, '');
@@ -76,8 +91,7 @@ export default async function handler(req, res) {
       return sendJson(res, 401, { error: { message: 'Missing Authorization header' } });
     }
 
-    const path = req.url.split('?')[0] || '/';
-    const query = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '';
+    const { path, query } = getOriginalPathAndQuery(req);
     const upstreamUrl = `${upstreamOrigin}${path}${query}`;
 
     const rawBody = ['GET', 'HEAD'].includes(req.method) ? '' : await readRawBody(req);
