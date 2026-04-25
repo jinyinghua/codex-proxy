@@ -95,6 +95,72 @@ function buildUpstreamUrl(upstreamOrigin, path, query) {
   return new URL(`${path}${query}`, `${upstreamOrigin}/`).toString();
 }
 
+function normalizeTextContent(content) {
+  if (typeof content === 'string') return content;
+  if (!Array.isArray(content)) return '';
+
+  const texts = [];
+  for (const item of content) {
+    if (!item || typeof item !== 'object') continue;
+    if (typeof item.text === 'string') texts.push(item.text);
+    else if (typeof item.input_text === 'string') texts.push(item.input_text);
+  }
+  return texts.join('\n');
+}
+
+function messagesToCodexInput(messages) {
+  if (!Array.isArray(messages)) return [];
+
+  return messages
+    .filter(msg => msg && typeof msg === 'object')
+    .map(msg => ({
+      role: msg.role || 'user',
+      content: [
+        {
+          type: 'input_text',
+          text: normalizeTextContent(msg.content),
+        }
+      ],
+    }))
+    .filter(item => item.content[0].text);
+}
+
+function normalizeForCodexBackend(body) {
+  const out = { ...body };
+
+  if (!('store' in out)) out.store = false;
+  if (!('stream' in out)) out.stream = true;
+
+  if (!('instructions' in out)) {
+    out.instructions = '';
+  }
+
+  if (!out.input) {
+    if (Array.isArray(out.messages)) {
+      out.input = messagesToCodexInput(out.messages);
+    } else if (typeof out.prompt === 'string' && out.prompt) {
+      out.input = [
+        {
+          role: 'user',
+          content: [{ type: 'input_text', text: out.prompt }],
+        }
+      ];
+    } else if (typeof out.input === 'string') {
+      out.input = [
+        {
+          role: 'user',
+          content: [{ type: 'input_text', text: out.input }],
+        }
+      ];
+    }
+  }
+
+  delete out.messages;
+  delete out.prompt;
+
+  return out;
+}
+
 export default async function handler(req, res) {
   try {
     const upstreamOrigin = getUpstreamOrigin();
@@ -116,8 +182,8 @@ export default async function handler(req, res) {
     let outgoingBody = rawBody;
 
     if (jsonBody && typeof jsonBody === 'object') {
-      const out = { ...jsonBody };
-      const drawInfo = parseDrawAlias(jsonBody?.model);
+      const out = normalizeForCodexBackend(jsonBody);
+      const drawInfo = parseDrawAlias(jsonBody?.model || out?.model);
 
       if (drawInfo) {
         const realModel = process.env.DRAW_REAL_MODEL || 'gpt-5.2';
@@ -150,8 +216,11 @@ export default async function handler(req, res) {
       console.log('forward tools:', JSON.stringify(out?.tools || null));
       console.log('forward tool_choice:', JSON.stringify(out?.tool_choice || null));
       console.log('stream:', Boolean(out?.stream));
+      console.log('instructions exists:', 'instructions' in out);
+      console.log('input type:', Array.isArray(out?.input) ? 'array' : typeof out?.input);
       console.log('upstream origin:', upstreamOrigin);
       console.log('upstream url:', upstreamUrl);
+      console.log('outgoing body:', outgoingBody);
     } else {
       console.log('incoming path:', path);
       console.log('method:', req.method);
