@@ -91,10 +91,10 @@ export default async function handler(req, res) {
   }
 
   try {
-    const upstreamBase = (process.env.UPSTREAM_BASE_URL || '').replace(/\/+$/, '');
-    if (!upstreamBase) {
+    const upstreamUrl = (process.env.UPSTREAM_URL || '').trim();
+    if (!upstreamUrl) {
       return sendJson(res, 500, {
-        error: { message: 'Missing UPSTREAM_BASE_URL' }
+        error: { message: 'Missing UPSTREAM_URL' }
       });
     }
 
@@ -139,8 +139,9 @@ export default async function handler(req, res) {
     console.log('forward tools:', JSON.stringify(out?.tools || null));
     console.log('forward tool_choice:', JSON.stringify(out?.tool_choice || null));
     console.log('stream:', Boolean(out?.stream));
+    console.log('upstream url:', upstreamUrl);
 
-    const upstreamResp = await fetch(`${upstreamBase}/v1/responses`, {
+    const upstreamResp = await fetch(upstreamUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

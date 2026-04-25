@@ -8,7 +8,7 @@
   - 自动改写为真实模型 `DRAW_REAL_MODEL`
   - 自动注入 `tools: [{"type":"image_generation"}]`
 - 原样透传 `Authorization` 到上游
-- 再把请求转发到 `UPSTREAM_BASE_URL/v1/responses`
+- 再把请求转发到 `UPSTREAM_URL`
 - 支持非流式和流式响应透传
 
 ## 路由
@@ -28,8 +28,14 @@ https://你的项目.vercel.app
 必填：
 
 ```text
-UPSTREAM_BASE_URL=https://你的Codex上游地址
+UPSTREAM_URL=https://你的Codex完整上游接口地址
 DRAW_REAL_MODEL=真实模型名
+```
+
+例如：
+
+```text
+UPSTREAM_URL=https://api.openai.com/backend-api/codex/responses
 ```
 
 可选：
@@ -77,7 +83,7 @@ gpt-draw-宽x高
 }
 ```
 
-本项目会把上游 `/v1/responses` 的响应体按流直接透传给客户端，适合 SSE / chunked responses 场景。
+本项目会把上游响应体按流直接透传给客户端，适合 SSE / chunked responses 场景。
 
 注意：
 - 是否真正流式，取决于上游是否支持
