@@ -19,27 +19,11 @@ function parseDrawAlias(model) {
 }
 
 function buildImageTool(size) {
-  const mode = (process.env.IMAGE_TOOL_FORMAT || 'plain').trim().toLowerCase();
-  if (mode === 'with_size') return { type: 'image_generation', size };
-  return { type: 'image_generation' };
-}
-
-// 修正：将 image_generation 声明为 function tool
-function buildImageToolFunction() {
   return {
-    type: 'function',
-    function: {
-      name: 'image_generation',
-      description: 'Generates an image from a text prompt with specified dimensions.',
-      parameters: {
-        type: 'object',
-        properties: {
-          prompt: { type: 'string', description: 'The text prompt to generate the image.' },
-          size: { type: 'string', enum: ['1024x1024', '1024x1536', '1536x1024'], description: 'The size of the image to generate.' }
-        },
-        required: ['prompt']
-      }
-    }
+    type: 'image_generation',
+    size: size || '1024x1024',
+    quality: 'high',
+    background: 'auto',
   };
 }
 
@@ -204,80 +188,41 @@ export default async function handler(req, res) {
       const out = normalizeForCodexBackend(jsonBody);
       const drawInfo = parseDrawAlias(jsonBody?.model || out?.model);
 
-      // 修正：总是声明 image_generation 为 function tool
-      const imageTool = buildImageToolFunction();
-      const existingTools = Array.isArray(out.tools) ? out.tools : [];
-      const hasImageToolFunction = existingTools.some(t => t && t.type === 'function' && t.function.name === 'image_generation');
-      if (!hasImageToolFunction) {
-        out.tools = [...existingTools, imageTool];
-      } else {
-        out.tools = existingTools; // 如果已经存在，就不用重复添加
-      }
-
-      // 如果是绘图别名模型，强制调用 image_generation 函数
       if (drawInfo) {
-        const realModel = process.env.DRAW_REAL_MODEL || 'gpt-5.4-mini'; // 默认值改为 mini
+        const realModel = process.env.DRAW_REAL_MODEL || 'gpt-5.2';
         out.model = realModel;
 
-        out.tool_choice = { type: 'function', function: { name: 'image_generation' } };
-
-        // 将绘图指令和 size 作为函数参数注入 messages/input
-        const userPrompt = normalizeTextContent(out.input.find(item => item.role === 'user')?.content || '');
-        if (userPrompt) {
-          out.input = [
-            { // 这是一个 tool_code input，或者根据实际需要调整为更兼容的格式
-              type: 'tool_code',
-              text: `call:image_generation(prompt='${userPrompt.replace(/'/g, "'")}', size='${drawInfo.size}')`
-            }
-          ];
+        const tools = Array.isArray(out.tools) ? out.tools : [];
+        const hasImageTool = tools.some(t => t && t.type === 'image_generation');
+        if (!hasImageTool) {
+          out.tools = [...tools, buildImageTool(drawInfo.size)];
         } else {
-           // 如果没有找到用户输入，也需要一个兜底，避免 input 为空
-           out.input = [
-             {
-               role: 'user',
-               content: [
-                 {
-                   type: 'input_text',
-                   text: 'Generate an image.',
-                 }
-               ],
-             }
-           ];
+          // 替换已有的简陋 image_generation 为完整格式
+          out.tools = tools.map(t =>
+            t && t.type === 'image_generation' ? buildImageTool(drawInfo.size) : t
+          );
         }
-      } else {
-        // 如果不是绘图模型，但有 tool_choice 相关的环境变量，依然应用
-        const forceToolChoice = (process.env.FORCE_TOOL_CHOICE || '').trim().toLowerCase();
-        if (forceToolChoice === 'required') {
-          out.tool_choice = 'required';
-        } else if (forceToolChoice === 'image_generation') {
-          // 这里不再会命中，因为 image_generation 已强制为 function tool
-          out.tool_choice = { type: 'function', function: { name: 'image_generation' } };
-        }
-      }
 
-      // PUT_SIZE_IN_BODY 这种顶层字段不再需要，因为参数已在工具函数里传递
+        // 强制 tool_choice 为 image_generation
+        out.tool_choice = { type: 'image_generation' };
+      }
 
       outgoingBody = JSON.stringify(out);
 
-      console.log('--- Incoming Request --- ');
       console.log('incoming path:', path);
       console.log('method:', req.method);
       console.log('incoming model:', jsonBody?.model);
-      console.log('--- Outgoing Request (to Upstream) ---');
       console.log('forward model:', out?.model);
       console.log('forward tools:', JSON.stringify(out?.tools || null));
       console.log('forward tool_choice:', JSON.stringify(out?.tool_choice || null));
       console.log('stream:', Boolean(out?.stream));
       console.log('instructions exists:', 'instructions' in out);
       console.log('input type:', Array.isArray(out?.input) ? 'array' : typeof out?.input);
-      console.log('upstream origin:', upstreamOrigin);
       console.log('upstream url:', upstreamUrl);
-      console.log('outgoing body:', outgoingBody); // 打印完整 body
     } else {
       console.log('incoming path:', path);
       console.log('method:', req.method);
       console.log('non-json body');
-      console.log('upstream origin:', upstreamOrigin);
       console.log('upstream url:', upstreamUrl);
     }
 
@@ -308,31 +253,10 @@ export default async function handler(req, res) {
     }
 
     if (upstreamResp.body) {
-      // 捕获并打印上游响应体，尤其是错误信息
-      const reader = upstreamResp.body.getReader();
-      let responseBodyText = '';
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        if (value) {
-          const chunk = new TextDecoder().decode(value);
-          responseBodyText += chunk;
-          res.write(Buffer.from(value)); // 仍然流式透传
-        }
-      }
-      reader.releaseLock();
-      console.log('--- Upstream Response Body (Captured) ---');
-      console.log(responseBodyText); // 打印上游完整响应
-      res.end();
-      return;
+      return await pipeWebStreamToNodeResponse(upstreamResp.body, res);
     }
 
     const text = await upstreamResp.text();
-    if (!res.getHeader('Content-Type')) {
-      res.setHeader('Content-Type', 'application/json; charset=utf-8');
-    }
-    console.log('--- Upstream Response Body (Non-Stream) ---');
-    console.log(text); // 打印上游完整响应
     res.end(text);
   } catch (err) {
     return sendJson(res, 500, {
