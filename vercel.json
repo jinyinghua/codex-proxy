@@ -1,13 +1,13 @@
 {
-  "version": 2,
+  "$schema": "https://openapi.vercel.sh/vercel.json",
   "rewrites": [
     {
       "source": "/",
-      "destination": "/handler?__path=/"
+      "destination": "/api/proxy?__path=/"
     },
     {
       "source": "/:path*",
-      "destination": "/handler?__path=/:path*"
+      "destination": "/api/proxy?__path=/:path*"
     }
   ]
 }
